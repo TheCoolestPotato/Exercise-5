@@ -1,0 +1,179 @@
+---
+title: "Exercise 5"
+format: html
+editor: visual
+---
+Challenge 1
+```{r}
+library(tidyverse) 
+library(usethis)
+library(radiant)
+library(mosaic)
+library(cowplot)
+f <- "https://raw.githubusercontent.com/difiore/ada-datasets/main/IMDB-movies.csv"
+d <- read_csv(f, show_col_types = FALSE)
+d <- filter(d, startYear >= 1920) |>
+  filter(startYear <= 1979) |>
+  filter(runtimeMinutes >= 60) |>
+  filter(runtimeMinutes <= 180)
+d[c('millenia', 'century', 'decade', 'year')] <- str_split_fixed(d$startYear,'',4)
+(p <- ggplot(data=d, aes(x=runtimeMinutes)) +
+    geom_histogram(stat = "bin",bins=20,colour="black",fill="purple")) +
+  facet_wrap(~decade)
+results <- d |> group_by(decade) |>
+  dplyr::summarise(pop_n = n(),
+                   pop_mean = mean(runtimeMinutes, na.rm = TRUE),
+                   pop_sd =sdpop(runtimeMinutes, na.rm = TRUE))
+set.seed(1)
+s <- d |> group_by(decade) |>
+  sample_n(100, replace=FALSE) |>
+  dplyr::summarise(samp_size = n(),
+                   samp_1_mean=mean(runtimeMinutes, na.rm = TRUE),
+                   samp_1_sd=sd(runtimeMinutes, na.rm = TRUE),
+                   samp_1_se=sd(runtimeMinutes, na.rm = TRUE)/sqrt(samp_size))
+results <- inner_join(s, results, by = "decade") |>
+  mutate(pop_se = pop_sd/sqrt(100))
+reps <- 1000
+s <- {do(reps) * sample_n(group_by(d, decade), 100, replace=FALSE)} |>
+  group_by(decade, .index) |>
+  summarise(avg_runtimeMinutes = mean(runtimeMinutes, na.rm = TRUE), sd_runtimeMinutes = sd(runtimeMinutes, na.rm = TRUE))
+(p <- ggplot(data=s, aes(avg_runtimeMinutes)) +
+    geom_histogram(stat = "bin",
+                   bins=20,
+                   colour="black",
+                   fill="purple") +
+    facet_wrap(~ decade, scales = "free_x"))
+samp_distri <- s |>
+  group_by(decade) |>
+  summarize(samp_dist_mean=mean(avg_runtimeMinutes),
+            samp_dist_stdev=sd(avg_runtimeMinutes))
+
+comparison <- inner_join(results, samp_distri, by = "decade") |>
+  dplyr::select(decade, pop_se, samp_1_se, samp_dist_stdev)
+print(p)
+print(comparison)
+```
+
+Challenge 2
+```{r}
+f2 <- "https://raw.githubusercontent.com/difiore/ada-datasets/main/zombies.csv"
+d2 <- read.csv(f2)
+survivors <- dplyr::select(d2, "gender", "height", "weight", "age", "zombies_killed", "years_of_education")
+pop_means <- dplyr::summarise(survivors, mean(height), mean(weight),  mean(age), mean(zombies_killed), mean(years_of_education))
+pop_sds <- dplyr::summarise(survivors, sdpop(height), sdpop(weight), sdpop(age), sdpop(zombies_killed), sdpop(years_of_education))
+p_height <- ggplot(data=survivors,aes(x=gender, y=height))
+p_height <- p_height + geom_boxplot(aes(colour=factor(gender)))
+p_weight <- ggplot(data=survivors,aes(x=gender, y=weight))
+p_weight <- p_weight + geom_boxplot(aes(colour=factor(gender)))
+p_age <- ggplot(data=survivors,aes(x=gender, y=age))
+p_age <- p_age + geom_boxplot(aes(colour=factor(gender)))
+p_kills <- ggplot(data=survivors,aes(x=gender, y=zombies_killed))
+p_kills <- p_kills + geom_boxplot(aes(colour=factor(gender)))
+p_edu <- ggplot(data=survivors,aes(x=gender, y=years_of_education))
+p_edu <- p_edu + geom_boxplot(aes(colour=factor(gender)))
+plot_grid(p_height, p_weight, p_age, p_kills, p_edu, nrow = 2)
+p_age_height <- ggplot(data = survivors,
+             aes(x = age, y = height, colour = factor(gender))) +
+  geom_point() +
+  theme(legend.position = "bottom", legend.title = element_blank())
+p_age_weight <- ggplot(data = survivors,
+             aes(x = age, y = weight, colour = factor(gender))) +
+  geom_point() +
+  theme(legend.position = "bottom", legend.title = element_blank())
+plot_grid(p_age_height, p_age_weight, nrow = 1)
+##visually there is a positive correlation between height and weight compared with age for both genders. On average males seem to have greater height and weight, although this is more evident in height than weight.
+p_height_hist <- ggplot(data = survivors, aes(x=height)) +
+  geom_histogram(bins = 20) + ggtitle("Height")
+p_weight_hist <- ggplot(data = survivors, aes(x=weight)) +
+  geom_histogram(bins = 20) + ggtitle("Weight")
+p_age_hist <- ggplot(data = survivors, aes(x=age)) +
+  geom_histogram(bins = 20) + ggtitle("Age")
+p_kills_hist <- ggplot(data = survivors, aes(x=zombies_killed)) +
+  geom_histogram(binwidth = 1) + ggtitle("Zombies Killed")
+p_edu_hist <- ggplot(data = survivors, aes(x=years_of_education)) +
+  geom_histogram(binwidth = 1) + ggtitle("Years of Education")
+plot_grid(p_height_hist, p_weight_hist, p_age_hist, p_edu_hist, p_kills_hist, nrow = 2)
+##height, weight, and age seem to be normally distributed while years of edu and zombies killed seem not be normally distributed
+set.seed(1)
+s <- survivors |> sample_n(size = 50, replace = FALSE)
+samp_1_means <- s |> dplyr::summarise(across(
+  .cols = c(height, weight, age, zombies_killed, years_of_education),
+  .fns = ~ mean(.)))
+samp_1_SDs <- s |> dplyr::summarise(across(
+  .cols = c(height, weight, age, zombies_killed, years_of_education),
+  .fns = ~ sd(.)))
+samp_1_SE <- s |> dplyr::summarise(across(
+  .cols = c(height, weight, age),
+  .fns = ~ (sd(.)/50)),
+  across(
+    .cols = c(zombies_killed, years_of_education),
+    .fns = ~(sqrt(mean(.)/50))))
+samp_1_CI <- s |> dplyr::summarise(across(
+    .cols = c(height, weight, age, zombies_killed, years_of_education),
+    .fns = ~ (mean(.) + c(-1,1) * qnorm(1 - .05/2) * se(.))))
+oneninetynine_more <- do(199) *
+  sample_n(survivors, size= 50, replace = FALSE)
+s <- s |> mutate(.row = 1:50, .index = 200)
+combined_200 <- bind_rows(oneninetynine_more, s)
+all_samp_dist <- combined_200 |>
+  group_by(.index) |>
+  dplyr::summarise(across(
+  .cols = c(height, weight, age, zombies_killed, years_of_education),
+  .fns = ~ mean(.)))
+all_samp_SE <- combined_200 |>
+  group_by(.index) |>
+  dplyr::summarise(across(
+  .cols = c(height, weight, age),
+  .fns = ~ (sd(.)/50)),
+  across(
+    .cols = c(zombies_killed, years_of_education),
+    .fns = ~(sqrt(mean(.)/50))))
+samp_dist_means <- all_samp_dist |>
+  dplyr::summarise(across(
+  .cols = everything(),
+  .fns = ~ mean(.)))
+samp_dist_SD <- all_samp_dist |>
+  dplyr::summarise(across(
+  .cols = everything(),
+  .fns = ~ sd(.)))
+print(samp_1_SE)
+print(samp_dist_SD)
+## the standard error of the first sample of 50 is noticeably smaller compared to the stdev of the sampling distribution
+p_samp_height <- ggplot(data = all_samp_dist, aes(x=height)) +
+  geom_histogram(bins = 10) + ggtitle("Height")
+p_samp_weight <- ggplot(data = all_samp_dist, aes(x=weight)) +
+  geom_histogram(bins = 10) + ggtitle("Weight")
+p_samp_age <- ggplot(data = all_samp_dist, aes(x=age)) +
+  geom_histogram(bins = 10) + ggtitle("Age")
+p_samp_kills <- ggplot(data = all_samp_dist, aes(x=zombies_killed)) +
+  geom_histogram(bins = 10) + ggtitle("Zombies Killed")
+p_samp_edu <- ggplot(data = all_samp_dist, aes(x=years_of_education)) +
+  geom_histogram(bins = 10) + ggtitle("Years of Edu")
+plot_grid(p_samp_height, p_samp_weight, p_samp_age, p_samp_kills, p_samp_edu)
+##These now seem pretty normal, but the ones that weren't normal before are kinda gross (outliers, bimodal)
+ci_quant <- function(x, level = 0.95){
+  ci <- quantile(x, c((1-level)/2, 1 - (1-level)/2)) |> round(3)
+  ci <- paste0("[", ci[1], "-", ci[2], "]")
+  names(ci) <- "CI"
+  return(ci)}
+samp_dist_CI <- dplyr::summarise(all_samp_dist, across(
+  .cols = everything(),
+  .fns =  ~ quantile(., c((1-0.95)/2, 1 - (1-0.95)/2))))
+print(samp_1_CI)
+print(samp_dist_CI)
+##the confidence intervals between the first sample and the sampling distribution aren't greatly different
+yarr_booty <- function(x){
+  boot <- NULL
+  for (i in 1:1000) {
+    boot[i] <- mean(sample(x, length(x), replace = TRUE))
+  }
+  ci <- quantile(boot, c(.05/2, 1-.05/2))
+}
+CI_boot_samp <- s |>
+  dplyr::summarise(across(
+    .cols = c(height, weight, age, zombies_killed, years_of_education),
+    .fns = ~ yarr_booty(.)))
+print(samp_dist_CI)
+print(CI_boot_samp)
+##the bootstrapped CIs are almost identical to the other confidence intervals made from the sampling dist
+```
